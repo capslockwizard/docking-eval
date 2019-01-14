@@ -357,7 +357,7 @@ def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
     CAPRI_class_table['Classification'] = CAPRI_class
 
     # Additional criterion to ensure that the order of symmetry is the same as in the reference structure
-    CAPRI_class_table.loc[CAPRI_class_table['Order of Symmetry'] != num_mers] = 'Incorrect'
+    CAPRI_class_table.loc[predicted_num_mers != num_mers, 'Classification'] = 'Incorrect'
 
     return CAPRI_class_table
 

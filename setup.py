@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="docking-eval",
-    version="0.7",
+    version="0.8",
     author="Justin Chan",
     author_email="capslockwizard@gmail.com",
     description="Evaluates docking poses based on the CAPRI criteria",
