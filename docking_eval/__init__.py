@@ -100,11 +100,18 @@ class Native_Contacts(object):
         self.native_contact_mat = self.native_contact_table.values.astype(
             'bool')
         self.total_native_contacts = self.native_contact_mat.sum().astype('float32')
+        
+        subunit_1_sel_strs = []
+        subunit_2_sel_strs = []
 
-        self.subunit_1_int_sel_str = ' or '.join(['(segid %s and resid %d)' % (
-            subunit_1_meta[0], subunit_1_meta[1]) for subunit_1_meta in self.native_contact_table.index.values])
-        self.subunit_2_int_sel_str = ' or '.join(['(segid %s and resid %d)' % (
-            subunit_2_meta[0], subunit_2_meta[1]) for subunit_2_meta in self.native_contact_table.columns.values])
+        for segid in self.native_contact_table.index.get_level_values(0).unique():
+            subunit_1_sel_strs.append('(segid {} and resid {})'.format(segid, ' '.join([str(resid) for resid in self.native_contact_table.loc[segid].index.get_level_values(0)])))
+
+        for segid in self.native_contact_table.columns.get_level_values(0).unique():
+            subunit_2_sel_strs.append('(segid {} and resid {})'.format(segid, ' '.join([str(resid) for resid in self.native_contact_table[segid].columns.get_level_values(0)])))
+
+        self.subunit_1_int_sel_str = self.subunit_1_sel_str + ' and ({})'.format(' or '.join(subunit_1_sel_strs))
+        self.subunit_2_int_sel_str = self.subunit_2_sel_str + ' and ({})'.format(' or '.join(subunit_2_sel_strs))
 
         self.subunit_1_int_sel = self.subunit_1_sel.select_atoms(
             self.subunit_1_int_sel_str)
@@ -113,7 +120,6 @@ class Native_Contacts(object):
 
         self.subunit_1_int_num_atoms = self.subunit_1_int_sel.n_atoms
         self.subunit_2_int_num_atoms = self.subunit_2_int_sel.n_atoms
-
         self.subunit_1_int_num_res = self.subunit_1_int_sel.n_residues
         self.subunit_2_int_num_res = self.subunit_2_int_sel.n_residues
 
@@ -140,7 +146,7 @@ class Native_Contacts(object):
             names=['segIds', 'resIds', 'resNames'])
 
     def calc_percent_native_contacts(self, subunit_1_int_coord, subunit_2_int_coord):
-
+        
         if subunit_1_int_coord.shape[0] != self.subunit_1_int_num_atoms:
             raise Exception(
                 'The number of atoms in the interface of subunit 1 is not: %d' % self.subunit_1_int_num_atoms)
@@ -156,7 +162,7 @@ class Native_Contacts(object):
                         self.cutoff, self.atomlevelContactMatrix)
         atomlevel2reslevel(self.subunit_1_int_num_atom_per_res, self.subunit_2_int_num_atom_per_res,
                            self.atomlevelContactMatrix, self.reslevelContactMatrix)
-
+        
         return (self.reslevelContactMatrix * self.native_contact_mat).sum() / self.total_native_contacts * 100
 
     def getNumberOfAtomPerResList(self, sel):
@@ -272,7 +278,7 @@ class CAPRI_Criteria(object):
         return self.CAPRI_pred_class_num_to_name[np.min([np.digitize(nat_contact, self.perc_nat_contact_bin_edges) - 1, highest_class])]
 
 
-def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock_atomsel):
+def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock_atomsel, num_mers, predicted_num_mers):
     """CAPRI classification of docking results
 
     Native contact and iRMSD calculation:
@@ -300,7 +306,7 @@ def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
     
     mobile_segid_sel_str = 'segid ' + \
     np.unique(native_contacts_obj.subunit_2_sel.segids)[0]
-    
+     
     swapped_native_contacts_static_int_sel_str = native_contacts_obj.subunit_2_int_sel_str.replace(
         mobile_segid_sel_str, static_segid_sel_str)
     swapped_native_contacts_mobile_int_sel_str = native_contacts_obj.subunit_1_int_sel_str.replace(
@@ -310,29 +316,30 @@ def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
         mobile_segid_sel_str, static_segid_sel_str)
     swapped_irmsd_mobile_int_sel_str = irmsd_obj.subunit_1_int_sel_str.replace(
         static_segid_sel_str, mobile_segid_sel_str)
-
+    
     # Original
     native_contacts_static_int_sel_str = native_contacts_obj.subunit_1_int_sel_str
     native_contacts_mobile_int_sel_str = native_contacts_obj.subunit_2_int_sel_str
 
     irmsd_static_int_sel_str = irmsd_obj.subunit_1_int_sel_str
     irmsd_mobile_int_sel_str = irmsd_obj.subunit_2_int_sel_str
-        
+    
     native_contact_static_int_sel = dock_atomsel.select_atoms(native_contacts_static_int_sel_str)
     native_contact_static_int_coord = native_contact_static_int_sel.positions
+    
     swapped_native_contact_static_int_sel = dock_atomsel.select_atoms(swapped_native_contacts_static_int_sel_str)
     swapped_native_contact_static_int_coord = swapped_native_contact_static_int_sel.positions
     
     irmsd_static_int_sel = dock_atomsel.select_atoms(irmsd_static_int_sel_str)
     irmsd_static_int_coord = irmsd_static_int_sel.positions
     irmsd_static_int_num_atoms = irmsd_static_int_sel.n_atoms
-    irmsd_total_num_atoms = dock_atomsel.select_atoms(irmsd_static_int_sel_str + ' or ' + irmsd_mobile_int_sel_str).n_atoms
-
+    irmsd_total_num_atoms = dock_atomsel.select_atoms('(' + irmsd_static_int_sel_str + ') or (' + irmsd_mobile_int_sel_str + ')').n_atoms
+    
     swapped_irmsd_static_int_sel = dock_atomsel.select_atoms(swapped_irmsd_static_int_sel_str)
     swapped_irmsd_static_int_coord = swapped_irmsd_static_int_sel.positions
     swapped_irmsd_static_int_num_atoms = swapped_irmsd_static_int_sel.n_atoms
-    swapped_irmsd_total_num_atoms = dock_atomsel.select_atoms(swapped_irmsd_static_int_sel_str + ' or ' + swapped_irmsd_mobile_int_sel_str).n_atoms
-
+    swapped_irmsd_total_num_atoms = dock_atomsel.select_atoms('(' + swapped_irmsd_static_int_sel_str + ') or (' + swapped_irmsd_mobile_int_sel_str + ')').n_atoms
+    
     if irmsd_total_num_atoms != swapped_irmsd_total_num_atoms:
         raise Exception('The number of atoms in the static and mobile subunits are not the same')
     
@@ -348,6 +355,9 @@ def assign_Cn_symm_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
     CAPRI_class_table = pd.DataFrame(per_nat_con_n_lRMSD_n_iRMSD, index=range(
         1, universe.trajectory.n_frames + 1), columns=['% Native Contacts', 'lRMSD', 'iRMSD'])
     CAPRI_class_table['Classification'] = CAPRI_class
+
+    # Additional criterion to ensure that the order of symmetry is the same as in the reference structure
+    CAPRI_class_table.loc[CAPRI_class_table['Order of Symmetry'] != num_mers] = 'Incorrect'
 
     return CAPRI_class_table
 
@@ -379,7 +389,7 @@ def compute_Cn_symm_CAPRI_class(irmsd_total_num_atoms, swapped_irmsd_static_int_
         temp_percent_native_contacts[1] = native_contacts_obj.calc_percent_native_contacts(swapped_native_contact_mobile_int_coord, swapped_native_contact_static_int_coord)
 
         (per_nat_con_n_lRMSD_n_iRMSD[idx, 0], swap[:]) = (np.max(temp_percent_native_contacts), np.argmax(temp_percent_native_contacts))
-
+        
         if per_nat_con_n_lRMSD_n_iRMSD[idx, 0] >= 10:
             lRMSD_lig_coord = lrmsd_lig_sel.positions
 
@@ -409,7 +419,7 @@ def assign_soluble_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
     The interface residues were determined from the reference PDB structure
     """
     capri_criteria_inst = CAPRI_Criteria()
-
+    
     # Find the residues at the interface of the two subunits & their selection string
     # Then swap their chain IDs
     native_contacts_obj = Native_Contacts(
@@ -434,8 +444,8 @@ def assign_soluble_CAPRI_class(ref_atomsel, static_sel_str, mobile_sel_str, dock
     irmsd_static_int_sel = dock_atomsel.select_atoms(irmsd_static_int_sel_str)
     irmsd_static_int_coord = irmsd_static_int_sel.positions
     irmsd_static_int_num_atoms = irmsd_static_int_sel.n_atoms
-    irmsd_total_num_atoms = dock_atomsel.select_atoms(irmsd_static_int_sel_str + ' or ' + irmsd_mobile_int_sel_str).n_atoms
-    
+    irmsd_total_num_atoms = dock_atomsel.select_atoms('(' + irmsd_static_int_sel_str + ') or (' + irmsd_mobile_int_sel_str + ')').n_atoms
+
     native_contact_mobile_int_sel = dock_atomsel.select_atoms(native_contacts_mobile_int_sel_str)
     irmsd_mobile_int_sel = dock_atomsel.select_atoms(irmsd_mobile_int_sel_str)
 
